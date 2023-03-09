@@ -8,14 +8,24 @@ global thresh_val
 global thao
 global initialized
 global pixel_cm_ratio
+global images
+global image_idx
+global global_threshold
+global block_size
+global c
 pixel_cm_ratio = 1
 initialized = False
 thao_val = 20
 thresh_val = 80
+images = []
+image_idx = 0
+global_threshold = True
+block_size = 71
+c = 7
 
 
 def distance(p1, p2):
-    return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+    return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
 def thresh_callback(val):
@@ -38,8 +48,38 @@ def set_pixel_cm_ratio(ratio):
     pixel_cm_ratio = ratio
 
 
+def set_images(reg, t, c):
+    global images
+    images = [reg, t, c]
+
+
+def get_image():
+    return images[image_idx]
+
+
+def switch():
+    global image_idx
+    image_idx += 1
+    image_idx = image_idx % 3
+
+
+def block_size_callback(val):
+    global block_size
+    if val - block_size < 0:
+        block_size -= 2
+    elif val - block_size > 0:
+        block_size += 2
+    else:
+        pass
+
+
+def c_callback(val):
+    global c
+    c = val
+
+
 if __name__ == '__main__':
-    # set window name
+    # set window's name
     windows_name = "Object-measurement"
     cv.namedWindow(windows_name)
 
@@ -54,9 +94,17 @@ if __name__ == '__main__':
             # find contours
             gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
             smoothed = cv.GaussianBlur(gray_frame, (13, 13), 0)
-            ret, thresh = cv.threshold(smoothed, thresh_val, 255, 0)
-            edged = cv.Canny(thresh, thao_val, thao_val*3)
+
+            if global_threshold:
+                ret, thresh = cv.threshold(smoothed, thresh_val, 255, 0)
+            else:
+                thresh = cv.adaptiveThreshold(smoothed, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, block_size, c)
+
+            edged = cv.Canny(thresh, thao_val, thao_val * 3)
             contours, hierarchy = cv.findContours(edged, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+            # add to images set
+            set_images(frame, thresh, edged)
 
             # get & draw approximated contours
             for cnt in contours:
@@ -64,22 +112,22 @@ if __name__ == '__main__':
                 approx = cv.approxPolyDP(cnt, epsilon, True)
                 # cv.drawContours(frame, [approx], 0, (0, 255, 0), 3)
 
-            # get & draw rotated contours
+                # get & draw rotated contours
                 rect = cv.minAreaRect(approx)
                 box = cv.boxPoints(rect)
                 box = np.intp(box)
                 # cv.drawContours(frame, [box], 0, (0, 0, 255), 2)
 
-            # calculate size in pixels
+                # calculate size in pixels
                 width_tmp = int(distance(box[0], box[1]))
                 height_tmp = int(distance(box[0], box[3]))
-                width = max(width_tmp, height_tmp)*pixel_cm_ratio
-                height = min(width_tmp, height_tmp)*pixel_cm_ratio
+                width = max(width_tmp, height_tmp) * pixel_cm_ratio
+                height = min(width_tmp, height_tmp) * pixel_cm_ratio
 
-            # get bounding box
+                # get bounding box
                 x, y, w, h = cv.boundingRect(cnt)
 
-            # put text (write the object size)
+                # put text (write the object size)
                 font = cv.FONT_HERSHEY_SIMPLEX
                 org = (x, y + h + 20)
                 fontScale = 0.5
@@ -88,7 +136,7 @@ if __name__ == '__main__':
                 frame = cv.putText(frame, "width: {} | height: {}".format(round(width, 3), round(height, 3)), org, font,
                                    fontScale, color, thickness, cv.LINE_AA)
 
-            # draw bounding box
+                # draw bounding box
                 cv.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
             # initialize real object size (with credit card)
@@ -102,13 +150,14 @@ if __name__ == '__main__':
                            org_init, font_init, fontScale_init, color_init, thickness_init, cv.LINE_AA)
 
             # show the result
-            cv.imshow(windows_name, frame)
+            cv.imshow(windows_name, get_image())
 
             # get input from user
             key = cv.waitKey(1)
             if key == ord('q'):  # exit program (by pressing q on keyboard)
                 break
             if key == ord('t'):  # reset global threshold (incase object wasn't detected)
+                global_threshold = True
                 cv.createTrackbar("threshold", "Object-measurement", thresh_val, 255, thresh_callback)
             if key == ord('c'):  # reset global threshold (incase object wasn't detected)
                 cv.createTrackbar("Canny Thao", "Object-measurement", thao_val, 200, canny_callback)
@@ -122,6 +171,14 @@ if __name__ == '__main__':
             if key == ord('r'):
                 init(False)
                 set_pixel_cm_ratio(1)
+            if key == ord('s'):
+                switch()
+            if key == ord('a'):  # change from global to adaptive threshold
+                global_threshold = False
+                cv.createTrackbar("block-size", "Object-measurement", block_size, 100, block_size_callback)
+                cv.setTrackbarMin("block-size", "Object-measurement", 1)  # since block-size cannot be 0
+                cv.createTrackbar("c", "Object-measurement", c, 20, c_callback)
 
     cap.release()
     cv.destroyAllWindows()
+
