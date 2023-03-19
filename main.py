@@ -13,6 +13,7 @@ global image_idx
 global global_threshold
 global block_size
 global c
+global digits
 pixel_cm_ratio = 1
 initialized = False
 thao_val = 20
@@ -20,8 +21,9 @@ thresh_val = 80
 images = []
 image_idx = 0
 global_threshold = True
-block_size = 71
-c = 7
+block_size = 35
+c = 9
+digits = 3
 
 
 def distance(p1, p2):
@@ -78,6 +80,11 @@ def c_callback(val):
     c = val
 
 
+def digits_callback(val):
+    global digits
+    digits = val
+
+
 if __name__ == '__main__':
     # set window's name
     windows_name = "Object-measurement"
@@ -91,15 +98,17 @@ if __name__ == '__main__':
             # read configuration
             ret, frame = cap.read()
 
-            # find contours
+            # some standard image processing
             gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
             smoothed = cv.GaussianBlur(gray_frame, (13, 13), 0)
 
+            # apply threshold (Global by default)
             if global_threshold:
                 ret, thresh = cv.threshold(smoothed, thresh_val, 255, 0)
             else:
                 thresh = cv.adaptiveThreshold(smoothed, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, block_size, c)
 
+            # find contours
             edged = cv.Canny(thresh, thao_val, thao_val * 3)
             contours, hierarchy = cv.findContours(edged, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
@@ -133,8 +142,8 @@ if __name__ == '__main__':
                 fontScale = 0.5
                 color = (255, 0, 0)
                 thickness = 1
-                frame = cv.putText(frame, "width: {} | height: {}".format(round(width, 3), round(height, 3)), org, font,
-                                   fontScale, color, thickness, cv.LINE_AA)
+                frame = cv.putText(frame, "width: {} | height: {}".format(round(width, digits), round(height, digits)),
+                                   org, font, fontScale, color, thickness, cv.LINE_AA)
 
                 # draw bounding box
                 cv.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
@@ -178,6 +187,8 @@ if __name__ == '__main__':
                 cv.createTrackbar("block-size", "Object-measurement", block_size, 100, block_size_callback)
                 cv.setTrackbarMin("block-size", "Object-measurement", 1)  # since block-size cannot be 0
                 cv.createTrackbar("c", "Object-measurement", c, 20, c_callback)
+            if key == ord('d'):
+                cv.createTrackbar("digits", "Object-measurement", digits, 5, digits_callback)
 
     cap.release()
     cv.destroyAllWindows()
